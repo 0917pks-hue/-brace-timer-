@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>교정기 착용시간 트래커</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#F5F7F6;
+    --surface:#FFFFFF;
+    --ink:#1F2A28;
+    --muted:#69766F;
+    --border:#E1E8E5;
+    --upper:#2F6F6B;
+    --upper-soft:#E4EFEE;
+    --upper-deep:#204E4B;
+    --lower:#A6672A;
+    --lower-soft:#F4E9DA;
+    --lower-deep:#7C4C1D;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{
+    max-width:460px;
+    margin:0 auto;
+    padding:28px 18px 60px;
+  }
+  .app-title{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:22px;
+    letter-spacing:-0.01em;
+    margin:0 0 2px;
+  }
+  .app-sub{
+    color:var(--muted);
+    font-size:13.5px;
+    margin:0 0 24px;
+  }
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:22px 20px;
+    margin-bottom:18px;
+    border-left:4px solid var(--accent);
+  }
+  .card.upper{--accent:var(--upper);}
+  .card.lower{--accent:var(--lower);}
+
+  .card-head{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .arch-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:17px;
+    color:var(--accent-deep);
+  }
+  .card.upper{--accent-deep:var(--upper-deep);}
+  .card.lower{--accent-deep:var(--lower-deep);}
+
+  .start-date-row{
+    font-size:12.5px;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .start-date-row button{
+    border:none;
+    background:none;
+    color:var(--accent);
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    padding:0;
+    text-decoration:underline;
+    text-underline-offset:2px;
+  }
+  .date-edit{
+    display:flex;
+    gap:6px;
+    align-items:center;
+    margin-top:6px;
+    flex-wrap:wrap;
+  }
+  .date-edit input[type=date],
+  .date-edit input[type=number]{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    padding:5px 7px;
+    border:1px solid var(--border);
+    border-radius:7px;
+    color:var(--ink);
+    background:var(--bg);
+  }
+  .date-edit input[type=number]{ width:56px; }
+  .date-edit button.save{
+    border:none;
+    background:var(--accent);
+    color:#fff;
+    font-size:12.5px;
+    font-weight:600;
+    padding:6px 12px;
+    border-radius:7px;
+    cursor:pointer;
+  }
+
+  /* tabs */
+  .tab-nav{
+    display:flex;
+    gap:4px;
+    background:var(--bg);
+    padding:3px;
+    border-radius:10px;
+    margin-bottom:18px;
+  }
+  .tab-btn{
+    flex:1;
+    border:none;
+    background:transparent;
+    padding:8px 0;
+    font-size:13px;
+    font-weight:600;
+    color:var(--muted);
+    border-radius:8px;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .tab-btn.active{
+    background:var(--surface);
+    color:var(--accent-deep);
+    box-shadow:0 1px 3px rgba(0,0,0,.08);
+  }
+
+  .timer-display{
+    font-family:'Space Grotesk',sans-serif;
+    font-variant-numeric:tabular-nums;
+    font-size:42px;
+    font-weight:600;
+    text-align:center;
+    letter-spacing:0.01em;
+    padding:18px 0 14px;
+    color:var(--ink);
+  }
+  .timer-display.running{color:var(--accent-deep);}
+
+  .toggle-btn{
+    display:block;
+    width:100%;
+    padding:13px 0;
+    border:none;
+    border-radius:10px;
+    font-family:'Inter',sans-serif;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    background:var(--accent);
+    color:#fff;
+    transition:opacity .15s;
+  }
+  .toggle-btn.is-running{
+    background:var(--surface);
+    color:var(--accent-deep);
+    border:1.5px solid var(--accent);
+  }
+  .toggle-btn:active{opacity:.85;}
+  .ghost-btn{
+    background:var(--surface);
+    color:var(--accent-deep);
+    border:1.5px solid var(--accent);
+    padding:9px 0;
+    font-size:13.5px;
+  }
+
+  .stats-row{
+    display:flex;
+    gap:12px;
+    margin-top:16px;
+  }
+  .stat{
+    flex:1;
+    background:var(--accent-soft);
+    border-radius:10px;
+    padding:10px 12px;
+  }
+  .card.upper{--accent-soft:var(--upper-soft);}
+  .card.lower{--accent-soft:var(--lower-soft);}
+  .stat-label{
+    font-size:11.5px;
+    color:var(--muted);
+    margin-bottom:3px;
+  }
+  .stat-value{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:16px;
+    font-variant-numeric:tabular-nums;
+  }
+
+  .section-label{
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--muted);
+    margin:18px 0 8px;
+  }
+  .section-label:first-child{ margin-top:0; }
+  .section-label .hint{
+    font-weight:400;
+    color:var(--muted);
+    font-size:11.5px;
+  }
+
+  .past-form-note{
+    font-size:12px;
+    color:var(--muted);
+    margin:6px 0 0;
+  }
+
+  /* calendar */
+  .cal-nav{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .cal-nav button{
+    border:none;
+    background:var(--bg);
+    color:var(--accent-deep);
+    width:28px;
+    height:28px;
+    border-radius:8px;
+    font-size:15px;
+    cursor:pointer;
+  }
+  .cal-title{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;
+    font-size:14px;
+  }
+  .cal-grid{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:4px;
+  }
+  .cal-wd{
+    text-align:center;
+    font-size:10.5px;
+    color:var(--muted);
+    padding-bottom:3px;
+  }
+  .cal-cell{
+    aspect-ratio:1/1;
+    border-radius:8px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    font-size:11px;
+    cursor:pointer;
+    border:1px solid var(--border);
+  }
+  .cal-cell.empty{ border:none; cursor:default; background:transparent !important; }
+  .cal-cell.future{ cursor:default; opacity:.45; }
+  .cal-cell.today{ border:1.5px solid var(--accent); }
+  .cal-day{ font-weight:600; font-size:11px; }
+  .cal-hrs{ font-size:9px; color:var(--accent-deep); margin-top:1px; font-variant-numeric:tabular-nums; visibility:hidden; }
+  .cal-caption{
+    font-size:11.5px;
+    color:var(--muted);
+    text-align:center;
+    margin-top:10px;
+  }
+
+  .chart-wrap{ margin-top:2px; }
+  .chart-wrap svg{ display:block; }
+
+  .week-list{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    max-height:220px;
+    overflow-y:auto;
+  }
+  .week-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:9px 10px;
+    border-radius:9px;
+    background:var(--bg);
+    border:1px solid var(--border);
+  }
+  .week-item.current{ border-color:var(--accent); }
+  .week-item input[type=checkbox]{
+    width:18px;
+    height:18px;
+    accent-color:var(--accent);
+    flex-shrink:0;
+  }
+  .week-text{ flex:1; font-size:13.5px; }
+  .week-num{ font-weight:600; margin-right:6px; }
+  .week-range{ color:var(--muted); font-size:12px; }
+  .week-badge{
+    font-size:11px;
+    color:var(--accent-deep);
+    font-weight:600;
+    background:var(--accent-soft);
+    padding:2px 7px;
+    border-radius:6px;
+  }
+
+  .empty-note{
+    font-size:13px;
+    color:var(--muted);
+    text-align:center;
+    padding:10px 0;
+  }
+
+  .setup{
+    text-align:center;
+    padding:10px 0 4px;
+  }
+  .setup p{
+    font-size:13.5px;
+    color:var(--muted);
+    margin:0 0 10px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <h1 class="app-title">교정기 착용시간</h1>
+  <p class="app-sub">위·아래 교정기 착용 시간을 각각 기록해요</p>
+
+  <div id="upper-card" class="card upper"></div>
+  <div id="lower-card" class="card lower"></div>
+</div>
+
+<script>
+const ACCENT_RGB = { upper:'47,111,107', lower:'166,103,42' };
+const WEEKDAYS = ['일','월','화','수','목','금','토'];
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDmkwH976ht6e5Rlzk2NFhfLH0dnBJdyc4",
+  authDomain: "sermon-app-e43d2.firebaseapp.com",
+  projectId: "sermon-app-e43d2",
+  storageBucket: "sermon-app-e43d2.firebasestorage.app",
+  messagingSenderId: "88766506811",
+  appId: "1:88766506811:web:0e2c7e1f3dc81635e0b91e"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const docRef = db.collection('braceTracker').doc('main');
+
+let data = {
+  upper: { startDate:null, running:false, sessionStartMs:null, sessionStartDate:null, daily:{}, weeks:{} },
+  lower: { startDate:null, running:false, sessionStartMs:null, sessionStartDate:null, daily:{}, weeks:{} }
+};
+
+let editingStart = {upper:false, lower:false};
+let editingPast = {upper:false, lower:false};
+let activeTab = {upper:'timer', lower:'timer'};
+let calendarView = {}; // set in init, per arch {year, month(0-based)}
+let firstSnapshot = true;
+
+// Firestore save — this is now the shared source of truth, synced live across
+// every device that opens this file.
+function saveData(){
+  docRef.set(data).catch(e => console.error('저장 실패', e));
+}
+
+function pad(n){ return n.toString().padStart(2,'0'); }
+function dateKey(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function monthKey(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1); }
+function startOfDay(d){ const x=new Date(d); x.setHours(0,0,0,0); return x; }
+function fmtHMS(totalSeconds){
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  const sec = s%60;
+  return pad(h)+':'+pad(m)+':'+pad(sec);
+}
+function fmtHM(totalSeconds){
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  return h+'시간 '+m+'분';
+}
+function fmtCalTime(secs){
+  if(secs <= 0) return '';
+  const h = Math.floor(secs/3600);
+  const m = Math.floor((secs%3600)/60);
+  return h+':'+pad(m);
+}
+function fmtShortDate(d){
+  return (d.getMonth()+1)+'/'+d.getDate();
+}
+function daysInMonth(year, month0){
+  return new Date(year, month0+1, 0).getDate();
+}
+
+function rolloverIfNeeded(arch, now){
+  if(!arch.running) return;
+  const today = dateKey(now);
+  if(arch.sessionStartDate !== today){
+    const midnight = startOfDay(now);
+    const elapsedMs = midnight - arch.sessionStartMs;
+    if(elapsedMs > 0){
+      arch.daily[arch.sessionStartDate] = (arch.daily[arch.sessionStartDate]||0) + Math.floor(elapsedMs/1000);
+    }
+    arch.sessionStartMs = midnight.getTime();
+    arch.sessionStartDate = today;
+  }
+}
+
+function todaySeconds(arch, now){
+  const today = dateKey(now);
+  const base = arch.daily[today] || 0;
+  if(arch.running){
+    rolloverIfNeeded(arch, now);
+    const live = Math.floor((now - arch.sessionStartMs)/1000);
+    return base + live;
+  }
+  return base;
+}
+
+function monthSeconds(arch, now){
+  const mKey = monthKey(now);
+  const today = dateKey(now);
+  let sum = 0;
+  for(const [d, secs] of Object.entries(arch.daily)){
+    if(d.startsWith(mKey) && d !== today) sum += secs;
+  }
+  sum += todaySeconds(arch, now);
+  return sum;
+}
+
+function toggleRun(archKey){
+  const arch = data[archKey];
+  const now = new Date();
+  if(!arch.startDate){ return; }
+  if(!arch.running){
+    arch.running = true;
+    arch.sessionStartMs = now.getTime();
+    arch.sessionStartDate = dateKey(now);
+  } else {
+    rolloverIfNeeded(arch, now);
+    const today = dateKey(now);
+    const elapsedMs = now - arch.sessionStartMs;
+    arch.daily[today] = (arch.daily[today]||0) + Math.floor(elapsedMs/1000);
+    arch.running = false;
+    arch.sessionStartMs = null;
+    arch.sessionStartDate = null;
+  }
+  saveData();
+  render();
+}
+
+function setStartDate(archKey, value){
+  if(!value) return;
+  data[archKey].startDate = value;
+  editingStart[archKey] = false;
+  saveData();
+  render();
+}
+
+function toggleWeek(archKey, weekNum){
+  const arch = data[archKey];
+  arch.weeks[weekNum] = !arch.weeks[weekNum];
+  saveData();
+  render();
+}
+
+function setEditingStart(archKey, val){
+  editingStart[archKey] = val;
+  render();
+}
+
+function setEditingPast(archKey, val){
+  editingPast[archKey] = val;
+  render();
+}
+
+function setActiveTab(archKey, tab){
+  activeTab[archKey] = tab;
+  render();
+}
+
+function loadPastRecordFields(archKey){
+  const dateInput = document.getElementById(archKey+'-past-date');
+  const hInput = document.getElementById(archKey+'-past-h');
+  const mInput = document.getElementById(archKey+'-past-m');
+  if(!dateInput || !hInput || !mInput) return;
+  const d = dateInput.value;
+  const secs = data[archKey].daily[d] || 0;
+  hInput.value = Math.floor(secs/3600);
+  mInput.value = Math.floor((secs%3600)/60);
+}
+
+function savePastRecord(archKey){
+  const dateInput = document.getElementById(archKey+'-past-date');
+  const hInput = document.getElementById(archKey+'-past-h');
+  const mInput = document.getElementById(archKey+'-past-m');
+  if(!dateInput.value) return;
+  const h = parseInt(hInput.value, 10) || 0;
+  const m = parseInt(mInput.value, 10) || 0;
+  data[archKey].daily[dateInput.value] = h*3600 + m*60;
+  saveData();
+  render();
+}
+
+function editHistoryDate(archKey, dateStr){
+  const todayKey = dateKey(new Date());
+  if(dateStr > todayKey) return; // no logging future days
+  activeTab[archKey] = 'timer';
+  editingPast[archKey] = true;
+  render();
+  setTimeout(() => {
+    const dateInput = document.getElementById(archKey+'-past-date');
+    if(dateInput){
+      dateInput.value = dateStr;
+      loadPastRecordFields(archKey);
+    }
+  }, 0);
+}
+
+function changeCalendarMonth(archKey, delta){
+  const v = calendarView[archKey];
+  let m = v.month + delta;
+  let y = v.year;
+  if(m < 0){ m = 11; y -= 1; }
+  if(m > 11){ m = 0; y += 1; }
+  calendarView[archKey] = {year:y, month:m};
+  render();
+}
+
+function buildWeekList(arch, archKey, now){
+  if(!arch.startDate) return '';
+  const start = new Date(arch.startDate+'T00:00:00');
+  const diffDays = Math.floor((startOfDay(now) - startOfDay(start)) / 86400000);
+  const currentWeekNum = Math.floor(diffDays / 7) + 1;
+  if(currentWeekNum < 1) return '<p class="empty-note">시작일이 아직 오지 않았어요</p>';
+
+  let rows = '';
+  for(let w = currentWeekNum; w >= 1; w--){
+    const rangeStart = new Date(start.getTime() + (w-1)*7*86400000);
+    const rangeEnd = new Date(start.getTime() + (w*7 - 1)*86400000);
+    const checked = !!arch.weeks[w];
+    const isCurrent = (w === currentWeekNum);
+    rows += `
+      <label class="week-item${isCurrent?' current':''}">
+        <input type="checkbox" ${checked?'checked':''} onchange="toggleWeek('${archKey}', ${w})">
+        <span class="week-text">
+          <span class="week-num">${w}주차</span>
+          <span class="week-range">${fmtShortDate(rangeStart)} - ${fmtShortDate(rangeEnd)}</span>
+        </span>
+        ${isCurrent?'<span class="week-badge">이번 주</span>':''}
+      </label>`;
+  }
+  return `<div class="week-list">${rows}</div>`;
+}
+
+function buildCalendarGrid(arch, archKey, now){
+  const view = calendarView[archKey];
+  const year = view.year, month = view.month;
+  const first = new Date(year, month, 1);
+  const startWeekday = first.getDay();
+  const dim = daysInMonth(year, month);
+  const todayKey = dateKey(now);
+  const dayRef = 22*3600; // reference for color intensity: ~22h target wear
+
+  let cells = '';
+  for(let i=0;i<startWeekday;i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let d=1; d<=dim; d++){
+    const dk = `${year}-${pad(month+1)}-${pad(d)}`;
+    let secs = arch.daily[dk] || 0;
+    if(dk === todayKey) secs = todaySeconds(arch, now);
+    const isFuture = dk > todayKey;
+    const isToday = dk === todayKey;
+    const ratio = Math.min(1, secs/dayRef);
+    const alpha = secs>0 ? Math.min(0.85, 0.15 + ratio*0.7) : 0;
+    const bg = `rgba(${ACCENT_RGB[archKey]},${alpha.toFixed(2)})`;
+    const timeLabel = fmtCalTime(secs);
+    cells += `<div class="cal-cell${isToday?' today':''}${isFuture?' future':''}" ${isToday?`id="${archKey}-cal-today"`:''} style="background:${bg};" ${isFuture?'':`onclick="editHistoryDate('${archKey}','${dk}')"`}>
+      <span class="cal-day">${d}</span>
+      <span class="cal-hrs"${timeLabel?' style="visibility:visible"':''}>${timeLabel}</span>
+    </div>`;
+  }
+
+  const monthLabel = `${year}년 ${month+1}월`;
+  return `
+    <div class="cal-nav">
+      <button onclick="changeCalendarMonth('${archKey}', -1)">‹</button>
+      <span class="cal-title">${monthLabel}</span>
+      <button onclick="changeCalendarMonth('${archKey}', 1)">›</button>
+    </div>
+    <div class="cal-grid">
+      ${WEEKDAYS.map(w=>`<div class="cal-wd">${w}</div>`).join('')}
+      ${cells}
+    </div>
+    <p class="cal-caption">날짜를 누르면 그날 기록을 입력·수정할 수 있어요 · 진할수록 오래 착용</p>
+  `;
+}
+
+function svgLineChart(values, labels, color){
+  const w = 300, h = 130;
+  const padL = 30, padR = 8, padT = 10, padB = 20;
+  const innerW = w - padL - padR;
+  const innerH = h - padT - padB;
+  const n = values.length;
+  if(n === 0) return '<p class="empty-note">표시할 데이터가 없어요</p>';
+  const maxV = Math.max(1, ...values);
+  const stepX = n > 1 ? innerW / (n-1) : 0;
+  const pts = values.map((v,i) => [
+    padL + i*stepX,
+    padT + innerH - (v/maxV)*innerH
+  ]);
+  const pathD = pts.map((p,i) => (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const areaD = pathD +
+    ` L${pts[n-1][0].toFixed(1)},${(padT+innerH).toFixed(1)}` +
+    ` L${pts[0][0].toFixed(1)},${(padT+innerH).toFixed(1)} Z`;
+
+  let grid = '';
+  for(let i=0;i<=2;i++){
+    const gy = padT + innerH*i/2;
+    grid += `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${w-padR}" y2="${gy.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>`;
+  }
+
+  const labelEvery = Math.max(1, Math.ceil(n/6));
+  let dots = '', xlabels = '';
+  pts.forEach((p,i) => {
+    dots += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.4" fill="${color}"/>`;
+    if(i % labelEvery === 0 || i === n-1){
+      xlabels += `<text x="${p[0].toFixed(1)}" y="${h-6}" font-size="9" fill="var(--muted)" text-anchor="middle">${labels[i]}</text>`;
+    }
+  });
+
+  return `<div class="chart-wrap"><svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
+    ${grid}
+    <text x="${padL-4}" y="${padT+4}" font-size="9" fill="var(--muted)" text-anchor="end">${Math.round(maxV*10)/10}h</text>
+    <text x="${padL-4}" y="${padT+innerH+4}" font-size="9" fill="var(--muted)" text-anchor="end">0</text>
+    <path d="${areaD}" fill="${color}" opacity="0.12"/>
+    <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2"/>
+    ${dots}
+    ${xlabels}
+  </svg></div>`;
+}
+
+function buildDailyChart(arch, archKey, now){
+  const view = calendarView[archKey];
+  const year = view.year, month = view.month;
+  const dim = daysInMonth(year, month);
+  const todayKey = dateKey(now);
+  const values = [], labels = [];
+  for(let d=1; d<=dim; d++){
+    const dk = `${year}-${pad(month+1)}-${pad(d)}`;
+    let secs = arch.daily[dk] || 0;
+    if(dk === todayKey) secs = todaySeconds(arch, now);
+    if(dk > todayKey) secs = 0;
+    values.push(Math.round((secs/3600)*10)/10);
+    labels.push(String(d));
+  }
+  const accentColor = archKey==='upper' ? 'var(--upper)' : 'var(--lower)';
+  return svgLineChart(values, labels, accentColor);
+}
+
+function buildMonthlyChart(arch, archKey, now){
+  const map = {};
+  for(const [d,secs] of Object.entries(arch.daily)){
+    const mk = d.slice(0,7);
+    map[mk] = (map[mk]||0) + secs;
+  }
+  const curKey = monthKey(now);
+  map[curKey] = monthSeconds(arch, now);
+  if(arch.startDate){
+    let d = new Date(arch.startDate+'T00:00:00');
+    d.setDate(1);
+    const cur = new Date(now.getFullYear(), now.getMonth(), 1);
+    while(d <= cur){
+      const mk = monthKey(d);
+      if(!(mk in map)) map[mk] = 0;
+      d.setMonth(d.getMonth()+1);
+    }
+  }
+  const keys = Object.keys(map).sort();
+  const values = keys.map(k => Math.round((map[k]/3600)*10)/10);
+  const labels = keys.map(k => k.slice(2).replace('-','.'));
+  const accentColor = archKey==='upper' ? 'var(--upper)' : 'var(--lower)';
+  return svgLineChart(values, labels, accentColor);
+}
+
+function buildTimerTab(arch, archKey, now){
+  const today = todaySeconds(arch, now);
+  const month = monthSeconds(arch, now);
+  const todayKey = dateKey(now);
+  return `
+    <div class="timer-display${arch.running?' running':''}" id="${archKey}-timer">${fmtHMS(today)}</div>
+    <button class="toggle-btn${arch.running?' is-running':''}" onclick="toggleRun('${archKey}')">
+      ${arch.running ? '일시정지' : '착용 시작'}
+    </button>
+
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-label">오늘 합계</div>
+        <div class="stat-value" id="${archKey}-stat-today">${fmtHM(today)}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">이번 달 누적</div>
+        <div class="stat-value" id="${archKey}-stat-month">${fmtHM(month)}</div>
+      </div>
+    </div>
+
+    <div class="section-label">지난 기록 <span class="hint">(놓친 날짜를 직접 입력)</span></div>
+    ${editingPast[archKey] ? `
+      <div class="date-edit">
+        <input type="date" id="${archKey}-past-date" max="${todayKey}" value="${todayKey}" onchange="loadPastRecordFields('${archKey}')">
+        <input type="number" id="${archKey}-past-h" min="0" placeholder="시간" value="0"> 시간
+        <input type="number" id="${archKey}-past-m" min="0" max="59" placeholder="분" value="0"> 분
+        <button class="save" onclick="savePastRecord('${archKey}')">저장</button>
+      </div>
+      <p class="past-form-note">해당 날짜의 총 착용시간으로 저장돼요 (기존 기록은 덮어써요)</p>
+    ` : `
+      <button class="toggle-btn ghost-btn" onclick="setEditingPast('${archKey}', true)">지난 기록 추가하기</button>
+    `}
+
+    <div class="section-label">주간 조이기 체크리스트</div>
+    ${buildWeekList(arch, archKey, now)}
+  `;
+}
+
+function renderCard(archKey, label){
+  const arch = data[archKey];
+  const now = new Date();
+  const el = document.getElementById(archKey+'-card');
+
+  if(!arch.startDate){
+    el.innerHTML = `
+      <div class="card-head">
+        <span class="arch-name">${label}</span>
+      </div>
+      <div class="setup">
+        <p>착용을 시작한 날짜를 먼저 설정해주세요</p>
+        <div class="date-edit" style="justify-content:center;">
+          <input type="date" id="${archKey}-init-date" value="${dateKey(now)}">
+          <button class="save" onclick="setStartDate('${archKey}', document.getElementById('${archKey}-init-date').value)">설정</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const startDateObj = new Date(arch.startDate+'T00:00:00');
+  const dateLabel = `${startDateObj.getFullYear()}.${pad(startDateObj.getMonth()+1)}.${pad(startDateObj.getDate())} 시작`;
+  const tab = activeTab[archKey];
+
+  let tabContent = '';
+  if(tab === 'timer') tabContent = buildTimerTab(arch, archKey, now);
+  else if(tab === 'calendar') tabContent = buildCalendarGrid(arch, archKey, now);
+  else if(tab === 'chart') tabContent = `
+    <div class="section-label">일별 착용시간 <span class="hint">(달력 탭에서 고른 달 기준)</span></div>
+    ${buildDailyChart(arch, archKey, now)}
+    <div class="section-label">월별 누적 시간</div>
+    ${buildMonthlyChart(arch, archKey, now)}
+  `;
+
+  el.innerHTML = `
+    <div class="card-head">
+      <span class="arch-name">${label}</span>
+      <div class="start-date-row">
+        <span>${dateLabel}</span>
+        <button onclick="setEditingStart('${archKey}', ${!editingStart[archKey]})">${editingStart[archKey]?'닫기':'수정'}</button>
+      </div>
+    </div>
+    ${editingStart[archKey] ? `
+      <div class="date-edit">
+        <input type="date" id="${archKey}-edit-date" value="${arch.startDate}">
+        <button class="save" onclick="setStartDate('${archKey}', document.getElementById('${archKey}-edit-date').value)">저장</button>
+      </div>
+    ` : ''}
+
+    <div class="tab-nav">
+      <button class="tab-btn${tab==='timer'?' active':''}" onclick="setActiveTab('${archKey}','timer')">타이머</button>
+      <button class="tab-btn${tab==='calendar'?' active':''}" onclick="setActiveTab('${archKey}','calendar')">달력</button>
+      <button class="tab-btn${tab==='chart'?' active':''}" onclick="setActiveTab('${archKey}','chart')">그래프</button>
+    </div>
+
+    ${tabContent}
+  `;
+
+  if(tab === 'timer' && editingPast[archKey]){
+    loadPastRecordFields(archKey);
+  }
+}
+
+function render(){
+  renderCard('upper', '위쪽 교정기');
+  renderCard('lower', '아래쪽 교정기');
+}
+
+// lightweight per-second update: only touches timer/stat text + today's calendar cell,
+// never rebuilds the DOM, so open date pickers / inputs are never disturbed
+function tick(){
+  const now = new Date();
+  for(const archKey of ['upper','lower']){
+    const arch = data[archKey];
+    if(!arch.running) continue;
+    const t = todaySeconds(arch, now);
+    const m = monthSeconds(arch, now);
+    const timerEl = document.getElementById(archKey+'-timer');
+    const todayEl = document.getElementById(archKey+'-stat-today');
+    const monthEl = document.getElementById(archKey+'-stat-month');
+    if(timerEl) timerEl.textContent = fmtHMS(t);
+    if(todayEl) todayEl.textContent = fmtHM(t);
+    if(monthEl) monthEl.textContent = fmtHM(m);
+    const todayCell = document.getElementById(archKey+'-cal-today');
+    if(todayCell){
+      const dayRef = 22*3600;
+      const ratio = Math.min(1, t/dayRef);
+      const alpha = t>0 ? Math.min(0.85, 0.15 + ratio*0.7) : 0;
+      todayCell.style.background = `rgba(${ACCENT_RGB[archKey]},${alpha.toFixed(2)})`;
+      const hrsEl = todayCell.querySelector('.cal-hrs');
+      if(hrsEl){
+        hrsEl.textContent = fmtCalTime(t);
+        hrsEl.style.visibility = t>0 ? 'visible' : 'hidden';
+      }
+    }
+  }
+  if(Math.floor(Date.now()/1000) % 20 === 0){
+    if(data.upper.running || data.lower.running) saveData();
+  }
+}
+
+function init(){
+  const now = new Date();
+  calendarView.upper = {year: now.getFullYear(), month: now.getMonth()};
+  calendarView.lower = {year: now.getFullYear(), month: now.getMonth()};
+
+  docRef.onSnapshot(snap => {
+    if(snap.exists){
+      const remote = snap.data();
+      for(const k of ['upper','lower']){
+        if(remote[k]) data[k] = Object.assign(data[k], remote[k]);
+      }
+    } else if(firstSnapshot){
+      // no doc yet — create it so other devices have something to subscribe to
+      docRef.set(data).catch(e => console.error('초기 저장 실패', e));
+    }
+    firstSnapshot = false;
+    render();
+  }, err => console.error('실시간 동기화 실패', err));
+
+  setInterval(tick, 1000);
+
+  document.addEventListener('visibilitychange', () => {
+    if(document.hidden) saveData();
+  });
+  window.addEventListener('beforeunload', () => { saveData(); });
+}
+
+init();
+</script>
+</body>
+</html>
