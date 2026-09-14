@@ -349,8 +349,8 @@
   <h1 class="app-title">교정기 착용시간</h1>
   <p class="app-sub">위·아래 교정기 착용 시간을 각각 기록해요</p>
 
-  <div id="upper-card" class="card upper"></div>
   <div id="lower-card" class="card lower"></div>
+  <div id="upper-card" class="card upper"></div>
 
   <div class="card" style="border-left:4px solid var(--muted); text-align:center;">
     <div class="section-label" style="margin-top:0;">공유하기</div>
@@ -377,12 +377,13 @@ const db = firebase.firestore();
 const docRef = db.collection('braceTracker').doc('main');
 
 let data = {
-  upper: { startDate:null, running:false, sessionStartMs:null, sessionStartDate:null, daily:{}, weeks:{} },
-  lower: { startDate:null, running:false, sessionStartMs:null, sessionStartDate:null, daily:{}, weeks:{} }
+  upper: { startDate:null, running:false, sessionStartMs:null, sessionStartDate:null, daily:{}, weeks:{}, goalHours:20 },
+  lower: { startDate:null, running:false, sessionStartMs:null, sessionStartDate:null, daily:{}, weeks:{}, goalHours:20 }
 };
 
 let editingStart = {upper:false, lower:false};
 let editingPast = {upper:false, lower:false};
+let editingGoal = {upper:false, lower:false};
 let activeTab = {upper:'timer', lower:'timer'};
 let calendarView = {}; // set in init, per arch {year, month(0-based)}
 let firstSnapshot = true;
@@ -492,6 +493,34 @@ function toggleWeek(archKey, weekNum){
   const arch = data[archKey];
   arch.weeks[weekNum] = !arch.weeks[weekNum];
   saveData();
+  render();
+}
+
+function resetToday(archKey){
+  const arch = data[archKey];
+  const ok = confirm('오늘 기록한 착용시간을 0으로 초기화할까요? 되돌릴 수 없어요.');
+  if(!ok) return;
+  const today = dateKey(new Date());
+  arch.daily[today] = 0;
+  if(arch.running){
+    arch.running = false;
+    arch.sessionStartMs = null;
+    arch.sessionStartDate = null;
+  }
+  saveData();
+  render();
+}
+
+function setGoalHours(archKey, value){
+  const h = parseFloat(value);
+  data[archKey].goalHours = (h && h > 0) ? h : 20;
+  editingGoal[archKey] = false;
+  saveData();
+  render();
+}
+
+function setEditingGoal(archKey, val){
+  editingGoal[archKey] = val;
   render();
 }
 
@@ -675,6 +704,78 @@ function svgLineChart(values, labels, color){
   </svg></div>`;
 }
 
+function daysElapsedForView(year, month, now, startDateStr){
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month, daysInMonth(year, month));
+  const start = startDateStr ? new Date(startDateStr+'T00:00:00') : monthStart;
+  const rangeStart = start > monthStart ? start : monthStart;
+  const today = startOfDay(now);
+  const rangeEnd = today < monthEnd ? today : monthEnd;
+  if(rangeStart > rangeEnd) return 0;
+  return Math.floor((rangeEnd - rangeStart) / 86400000) + 1;
+}
+
+function buildMonthlySummary(arch, archKey, now){
+  const view = calendarView[archKey];
+  const year = view.year, month = view.month;
+  const dim = daysInMonth(year, month);
+  const todayKey = dateKey(now);
+  let totalSecs = 0, recordedDays = 0;
+  for(let d=1; d<=dim; d++){
+    const dk = `${year}-${pad(month+1)}-${pad(d)}`;
+    let secs = arch.daily[dk] || 0;
+    if(dk === todayKey) secs = todaySeconds(arch, now);
+    if(secs > 0){ totalSecs += secs; recordedDays++; }
+  }
+  const elapsedDays = daysElapsedForView(year, month, now, arch.startDate);
+  const goalHours = arch.goalHours || 20;
+  const goalSecs = elapsedDays * goalHours * 3600;
+  const pct = goalSecs > 0 ? Math.min(999, Math.round((totalSecs/goalSecs)*100)) : 0;
+  const avgSecs = recordedDays > 0 ? Math.round(totalSecs/recordedDays) : 0;
+  const monthLabel = `${year}년 ${month+1}월`;
+
+  return `
+    <p class="past-form-note" style="margin-bottom:10px;">${monthLabel} 기준 <span class="hint">(달력 탭에서 고른 달)</span></p>
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-label">기록한 날</div>
+        <div class="stat-value">${recordedDays}일</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">총 착용시간</div>
+        <div class="stat-value">${fmtHM(totalSecs)}</div>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-label">기록일 평균</div>
+        <div class="stat-value">${recordedDays>0 ? fmtHM(avgSecs) : '-'}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">하루 목표</div>
+        <div class="stat-value">
+          ${editingGoal[archKey] ? '' : goalHours+'시간'}
+          <button class="history-edit-btn" style="margin-left:${editingGoal[archKey]?0:6}px;" onclick="setEditingGoal('${archKey}', ${!editingGoal[archKey]})">${editingGoal[archKey]?'닫기':'수정'}</button>
+        </div>
+      </div>
+    </div>
+    ${editingGoal[archKey] ? `
+      <div class="date-edit">
+        <input type="number" id="${archKey}-goal-input" min="1" max="24" step="0.5" value="${goalHours}"> 시간/일
+        <button class="save" onclick="setGoalHours('${archKey}', document.getElementById('${archKey}-goal-input').value)">저장</button>
+      </div>
+    ` : ''}
+    <div class="section-label">목표 대비 실행율 <span class="hint">(하루 ${goalHours}시간 × ${elapsedDays}일 = ${fmtHM(goalSecs)})</span></div>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+      <span style="font-size:13px; color:var(--muted);">${fmtHM(totalSecs)} / ${fmtHM(goalSecs)}</span>
+      <span style="margin-left:auto; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; color:var(--accent-deep);">${pct}%</span>
+    </div>
+    <div style="background:var(--bg); border-radius:8px; height:10px; overflow:hidden;">
+      <div style="background:var(--accent); height:100%; width:${Math.min(100,pct)}%;"></div>
+    </div>
+  `;
+}
+
 function buildDailyChart(arch, archKey, now){
   const view = calendarView[archKey];
   const year = view.year, month = view.month;
@@ -727,6 +828,7 @@ function buildTimerTab(arch, archKey, now){
     <button class="toggle-btn${arch.running?' is-running':''}" onclick="toggleRun('${archKey}')">
       ${arch.running ? '일시정지' : '착용 시작'}
     </button>
+    <button class="toggle-btn ghost-btn" style="margin-top:8px;" onclick="resetToday('${archKey}')">오늘 기록 초기화</button>
 
     <div class="stats-row">
       <div class="stat">
@@ -786,6 +888,8 @@ function renderCard(archKey, label){
   if(tab === 'timer') tabContent = buildTimerTab(arch, archKey, now);
   else if(tab === 'calendar') tabContent = buildCalendarGrid(arch, archKey, now);
   else if(tab === 'chart') tabContent = `
+    <div class="section-label" style="margin-top:0;">이번 달 요약</div>
+    ${buildMonthlySummary(arch, archKey, now)}
     <div class="section-label">일별 착용시간 <span class="hint">(달력 탭에서 고른 달 기준)</span></div>
     ${buildDailyChart(arch, archKey, now)}
     <div class="section-label">월별 누적 시간</div>
@@ -822,8 +926,8 @@ function renderCard(archKey, label){
 }
 
 function render(){
-  renderCard('upper', '위쪽 교정기');
   renderCard('lower', '아래쪽 교정기');
+  renderCard('upper', '위쪽 교정기');
 }
 
 // lightweight per-second update: only touches timer/stat text + today's calendar cell,
