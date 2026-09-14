@@ -351,6 +351,13 @@
 
   <div id="upper-card" class="card upper"></div>
   <div id="lower-card" class="card lower"></div>
+
+  <div class="card" style="border-left:4px solid var(--muted); text-align:center;">
+    <div class="section-label" style="margin-top:0;">공유하기</div>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https%3A%2F%2F0917pks-hue.github.io%2F-brace-timer-%2F"
+         alt="앱 공유 QR코드" width="160" height="160" style="border-radius:10px;border:1px solid var(--border);">
+    <p class="cal-caption" style="margin-top:10px;">카메라로 찍으면 이 앱으로 바로 연결돼요</p>
+  </div>
 </div>
 
 <script>
@@ -554,22 +561,27 @@ function changeCalendarMonth(archKey, delta){
 function buildWeekList(arch, archKey, now){
   if(!arch.startDate) return '';
   const start = new Date(arch.startDate+'T00:00:00');
-  const diffDays = Math.floor((startOfDay(now) - startOfDay(start)) / 86400000);
-  const currentWeekNum = Math.floor(diffDays / 7) + 1;
-  if(currentWeekNum < 1) return '<p class="empty-note">시작일이 아직 오지 않았어요</p>';
+  // week 1 = the first Sunday on/after the start date
+  const firstSunday = new Date(start);
+  const startDow = firstSunday.getDay(); // 0 = Sunday
+  if(startDow !== 0){
+    firstSunday.setDate(firstSunday.getDate() + (7 - startDow));
+  }
+  const diffDays = Math.floor((startOfDay(now) - firstSunday) / 86400000);
+  const currentWeekNum = Math.max(1, Math.floor(diffDays / 7) + 1);
 
   let rows = '';
   for(let w = currentWeekNum; w >= 1; w--){
-    const rangeStart = new Date(start.getTime() + (w-1)*7*86400000);
-    const rangeEnd = new Date(start.getTime() + (w*7 - 1)*86400000);
+    const sunday = new Date(firstSunday.getTime() + (w-1)*7*86400000);
     const checked = !!arch.weeks[w];
     const isCurrent = (w === currentWeekNum);
+    const isFuture = sunday > now;
     rows += `
       <label class="week-item${isCurrent?' current':''}">
-        <input type="checkbox" ${checked?'checked':''} onchange="toggleWeek('${archKey}', ${w})">
+        <input type="checkbox" ${checked?'checked':''} ${isFuture?'disabled':''} onchange="toggleWeek('${archKey}', ${w})">
         <span class="week-text">
           <span class="week-num">${w}주차</span>
-          <span class="week-range">${fmtShortDate(rangeStart)} - ${fmtShortDate(rangeEnd)}</span>
+          <span class="week-range">${fmtShortDate(sunday)} (일)</span>
         </span>
         ${isCurrent?'<span class="week-badge">이번 주</span>':''}
       </label>`;
