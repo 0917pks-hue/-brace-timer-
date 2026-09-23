@@ -417,6 +417,9 @@ function fmtCalTime(secs){
   const m = Math.floor((secs%3600)/60);
   return h+':'+pad(m);
 }
+function fmtMinutes(secs){
+  return String(Math.round(secs/60));
+}
 function fmtShortDate(d){
   return (d.getMonth()+1)+'/'+d.getDate();
 }
@@ -660,9 +663,10 @@ function buildCalendarGrid(arch, archKey, now){
   `;
 }
 
-function svgLineChart(values, labels, color){
-  const w = 300, h = 130;
-  const padL = 30, padR = 8, padT = 10, padB = 20;
+function svgLineChart(values, labels, color, dataLabels, rotateLabels){
+  const hasLabels = Array.isArray(dataLabels);
+  const w = 300, h = hasLabels ? 150 : 130;
+  const padL = 30, padR = 8, padT = hasLabels ? 30 : 10, padB = 20;
   const innerW = w - padL - padR;
   const innerH = h - padT - padB;
   const n = values.length;
@@ -685,11 +689,20 @@ function svgLineChart(values, labels, color){
   }
 
   const labelEvery = Math.max(1, Math.ceil(n/6));
-  let dots = '', xlabels = '';
+  let dots = '', xlabels = '', valueLabels = '';
   pts.forEach((p,i) => {
     dots += `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.4" fill="${color}"/>`;
     if(i % labelEvery === 0 || i === n-1){
       xlabels += `<text x="${p[0].toFixed(1)}" y="${h-6}" font-size="9" fill="var(--muted)" text-anchor="middle">${labels[i]}</text>`;
+    }
+    if(hasLabels && dataLabels[i]){
+      const lx = p[0].toFixed(1);
+      const ly = (p[1]-6).toFixed(1);
+      if(rotateLabels){
+        valueLabels += `<text x="${lx}" y="${ly}" font-size="7.5" fill="var(--ink)" text-anchor="start" transform="rotate(-60 ${lx} ${ly})">${dataLabels[i]}</text>`;
+      } else {
+        valueLabels += `<text x="${lx}" y="${ly}" font-size="9" fill="var(--ink)" text-anchor="middle">${dataLabels[i]}</text>`;
+      }
     }
   });
 
@@ -701,6 +714,7 @@ function svgLineChart(values, labels, color){
     <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2"/>
     ${dots}
     ${xlabels}
+    ${valueLabels}
   </svg></div>`;
 }
 
@@ -781,7 +795,7 @@ function buildDailyChart(arch, archKey, now){
   const year = view.year, month = view.month;
   const dim = daysInMonth(year, month);
   const todayKey = dateKey(now);
-  const values = [], labels = [];
+  const values = [], labels = [], dataLabels = [];
   for(let d=1; d<=dim; d++){
     const dk = `${year}-${pad(month+1)}-${pad(d)}`;
     let secs = arch.daily[dk] || 0;
@@ -789,9 +803,10 @@ function buildDailyChart(arch, archKey, now){
     if(dk > todayKey) secs = 0;
     values.push(Math.round((secs/3600)*10)/10);
     labels.push(String(d));
+    dataLabels.push(secs > 0 ? fmtMinutes(secs) : null);
   }
   const accentColor = archKey==='upper' ? 'var(--upper)' : 'var(--lower)';
-  return svgLineChart(values, labels, accentColor);
+  return svgLineChart(values, labels, accentColor, dataLabels, true);
 }
 
 function buildMonthlyChart(arch, archKey, now){
@@ -815,8 +830,9 @@ function buildMonthlyChart(arch, archKey, now){
   const keys = Object.keys(map).sort();
   const values = keys.map(k => Math.round((map[k]/3600)*10)/10);
   const labels = keys.map(k => k.slice(2).replace('-','.'));
+  const dataLabels = keys.map(k => map[k] > 0 ? fmtMinutes(map[k]) : null);
   const accentColor = archKey==='upper' ? 'var(--upper)' : 'var(--lower)';
-  return svgLineChart(values, labels, accentColor);
+  return svgLineChart(values, labels, accentColor, dataLabels, false);
 }
 
 function buildTimerTab(arch, archKey, now){
