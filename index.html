@@ -418,7 +418,7 @@ function fmtCalTime(secs){
   return h+':'+pad(m);
 }
 function fmtMinutes(secs){
-  return String(Math.round(secs/60));
+  return Math.floor(secs/3600)+'h';
 }
 function fmtShortDate(d){
   return (d.getMonth()+1)+'/'+d.getDate();
